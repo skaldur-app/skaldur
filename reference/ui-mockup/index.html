@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt Improver Concept v4</title>
+    <style>
+        /* --- New Curated Color Palette (Dark Theme) --- */
+        :root {
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --border-radius: 6px;
+
+            /* Base */
+            --bg-deep: #17191c;       /* Deepest background */
+            --bg-surface: #212429;   /* Sidebars, headers, slightly lighter */
+            --bg-input: #2a2e33;     /* Inputs, controls background */
+            --border-color: #3a3f47; /* Borders, dividers */
+
+            /* Text */
+            --text-primary: #f2f2f2;    /* Main text */
+            --text-secondary: #a8b2c0; /* Muted text, labels */
+            --text-on-accent: #ffffff;  /* Text on primary buttons */
+
+            /* Accents */
+            --accent-primary: #4d8aff;  /* Main interactive blue */
+            --accent-primary-hover: #6fa1ff; /* Lighter blue for hover */
+            --accent-secondary: #26a69a; /* Teal for secondary actions, icons */
+            --accent-secondary-hover: #4db6ac;
+
+            /* Components */
+            --bubble-user-bg: #31363f;  /* Slightly lighter surface */
+            --bubble-ai-bg: var(--accent-secondary); /* Teal AI messages */
+            --toolbar-bg: rgba(33, 36, 41, 0.85); /* --bg-surface with alpha */
+            --focus-ring-color: rgba(77, 138, 255, 0.4); /* Primary accent with alpha */
+            --locked-opacity: 0.6;
+            --locked-filter: grayscale(50%);
+        }
+
+        /* --- Base & Reset --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; font-family: var(--font-family); background-color: var(--bg-deep); color: var(--text-primary); font-size: 14px; overflow: hidden; }
+
+        /* --- Layout & Sidebars --- */
+        .app-container { display: flex; height: 100vh; position: relative; }
+
+        .sidebar {
+            width: 240px;
+            background-color: var(--bg-surface);
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            transition: width 0.3s ease, padding 0.3s ease, border-width 0.3s ease;
+            position: relative;
+            flex-shrink: 0;
+            border-right: 1px solid var(--border-color);
+        }
+        .sidebar.right-sidebar {
+            border-right: none;
+            border-left: 1px solid var(--border-color);
+        }
+        .sidebar.retracted {
+            width: 0;
+            padding-left: 0;
+            padding-right: 0;
+            overflow: hidden;
+            border-width: 0 !important;
+        }
+
+        .main-content { flex-grow: 1; background-color: var(--bg-deep); display: flex; flex-direction: column; height: 100%; overflow: hidden; position: relative; }
+
+        /* --- Sidebar Toggles --- */
+        .sidebar-toggle {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 10px 5px;
+            cursor: pointer;
+            z-index: 10;
+            border-radius: 0 var(--border-radius) var(--border-radius) 0;
+            line-height: 1;
+            transition: background-color 0.2s ease, color 0.2s ease;
+        }
+        .sidebar-toggle.left-toggle { left: 100%; margin-left:-1px; border-left: none; }
+        .sidebar-toggle.right-toggle { right: 100%; margin-right:-1px; border-right: none; border-radius: var(--border-radius) 0 0 var(--border-radius); }
+        .sidebar-toggle:hover { background-color: var(--accent-primary); color: var(--text-on-accent); }
+
+        /* --- Headers --- */
+        .sidebar-header, .main-header {
+            height: 50px;
+            background-color: var(--bg-surface);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            flex-shrink: 0;
+        }
+        .main-header { padding: 0 20px; }
+        .sidebar-header h2, .main-header h2 { font-size: 1.1em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+        .btn-icon { background: none; border: none; color: var(--text-secondary); font-size: 1.5em; cursor: pointer; padding: 5px; line-height: 1; }
+        .btn-icon:hover { color: var(--accent-primary-hover); }
+
+        /* --- Session List --- */
+        .session-list { list-style: none; overflow-y: auto; flex-grow: 1; padding: 10px 0; }
+        .session-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid var(--border-color); font-size: 0.95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; color: var(--text-secondary); }
+        .session-item:last-child { border-bottom: none; }
+        .session-item:hover { background-color: var(--bg-input); color: var(--text-primary); }
+        .session-item.active-session { background-color: var(--accent-primary); color: var(--text-on-accent); font-weight: 600; }
+
+        /* --- Main Content Area --- */
+        .chat-history-container { flex-grow: 1; position: relative; overflow: hidden; }
+        .chat-history { position: absolute; top: 55px; bottom: 0; left: 0; right: 0; padding: 20px; padding-top: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+
+        /* --- Destination Toolbar --- */
+        .destination-toolbar { position: absolute; top: 0; left: 0; right: 0; height: 55px; background-color: var(--toolbar-bg); backdrop-filter: blur(5px); padding: 10px 20px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid var(--border-color); z-index: 5; transition: opacity 0.3s ease, filter 0.3s ease; }
+        .destination-toolbar.locked { opacity: var(--locked-opacity); filter: var(--locked-filter); }
+        .destination-toolbar.locked select, .destination-toolbar.locked .toolbar-fork-button { pointer-events: none; }
+        .toolbar-group { display: flex; align-items: center; gap: 8px; }
+        .toolbar-group label { font-size: 0.9em; color: var(--text-secondary); white-space: nowrap; }
+        .toolbar-group select { padding: 5px 8px; background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--border-radius); font-size: 0.9em; max-width: 180px; }
+        .toolbar-lock-icon { font-size: 1.2em; color: var(--text-secondary); margin-left: 10px; opacity: 0; transition: opacity 0.3s ease; }
+        .destination-toolbar.locked .toolbar-lock-icon { opacity: 1; color: var(--accent-primary); }
+        .toolbar-fork-button { margin-left: auto; background: none; border: 1px solid var(--accent-secondary); color: var(--accent-secondary); padding: 6px 12px; border-radius: var(--border-radius); cursor: pointer; font-size: 0.9em; display: flex; align-items: center; gap: 5px; transition: all 0.2s ease; }
+        .toolbar-fork-button:hover { background-color: rgba(38, 166, 154, 0.1); border-color: var(--accent-secondary-hover); color: var(--accent-secondary-hover); } /* Teal hover */
+
+        /* Chat Bubbles */
+        .chat-bubble { padding: 12px 15px; border-radius: var(--border-radius); max-width: 75%; line-height: 1.5; word-wrap: break-word; }
+        .user-message { background-color: var(--bubble-user-bg); color: var(--text-primary); align-self: flex-end; border-bottom-right-radius: 0; }
+        .ai-message { background-color: var(--bubble-ai-bg); color: var(--text-on-accent); align-self: flex-start; border-bottom-left-radius: 0; }
+
+        /* Input Area */
+        .input-area-container { padding: 15px 20px; border-top: 1px solid var(--border-color); background-color: var(--bg-surface); flex-shrink: 0; }
+        .prompt-input { width: 100%; min-height: 120px; height: 15vh; resize: vertical; background-color: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 10px; font-family: inherit; font-size: 1em; color: var(--text-primary); margin-bottom: 10px; }
+        .prompt-input::placeholder { color: var(--text-secondary); }
+        .prompt-input:focus { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 0 2px var(--focus-ring-color); }
+        .controls { display: flex; align-items: center; gap: 10px; }
+        .controls select, .controls button { padding: 8px 12px; background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--border-radius); font-size: 0.9em; }
+        .controls select:focus, .controls button:focus { outline: none; border-color: var(--accent-primary); box-shadow: 0 0 0 2px var(--focus-ring-color); }
+        .controls .control-group { display: flex; align-items: center; gap: 5px; }
+        .controls .control-group .icon { font-size: 1.2em; width: 20px; text-align: center; color: var(--accent-secondary); } /* Teal icons */
+        .controls .btn-submit { background-color: var(--accent-primary); color: var(--text-on-accent); font-weight: 600; cursor: pointer; margin-left: auto; transition: background-color 0.2s ease; border: none; }
+        .controls .btn-submit:hover { background-color: var(--accent-primary-hover); }
+
+        /* --- Right Sidebar --- */
+        .config-section { padding: 15px; border-bottom: 1px solid var(--border-color); }
+        .config-section:last-child { border-bottom: none; }
+        .config-section h3 { font-size: 1em; font-weight: 600; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+        .config-section h3 .icon { font-size: 1.2em; color: var(--accent-secondary); } /* Teal settings icon */
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-size: 0.9em; color: var(--text-secondary); margin-bottom: 5px; }
+        .form-group select, .form-group input[type="number"] { width: 100%; padding: 8px 10px; background-color: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--border-radius); font-size: 0.9em; }
+        .form-group .locked-setting { width: 100%; padding: 8px 10px; background-color: rgba(0,0,0,0.1); border: 1px dashed var(--border-color); color: var(--text-secondary); border-radius: var(--border-radius); font-size: 0.9em; cursor: not-allowed; opacity: var(--locked-opacity); filter: var(--locked-filter); }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-surface); }
+        ::-webkit-scrollbar-thumb { background-color: var(--border-color); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background-color: #5a6270; } /* Slightly lighter border */
+
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Left Sidebar -->
+        <aside id="left-sidebar" class="sidebar left-sidebar">
+            <button id="left-toggle" class="sidebar-toggle left-toggle" title="Toggle Session Sidebar">&lt;</button>
+            <div class="sidebar-header">
+                <h2>Sessions</h2>
+                <button class="btn-icon" title="New Session">+</button>
+            </div>
+            <ul class="session-list">
+                 <li class="session-item">API Integration Strategy</li>
+                 <li class="session-item active-session">User Onboarding Email Sequence</li>
+                 <li class="session-item">Marketing Campaign Ideas</li>
+                 <li class="session-item">2024-07-28 10:30:15</li>
+                 <li class="session-item">Very Long Session Name</li>
+            </ul>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="main-header">
+                 <h2>User Onboarding Email Sequence</h2>
+            </div>
+
+            <div class="chat-history-container">
+                 <div id="dest-toolbar" class="destination-toolbar locked"> <!-- Start Locked Example -->
+                     <div class="toolbar-group">
+                         <label for="dest-provider">Destination:</label>
+                         <select id="dest-provider" disabled>
+                             <option selected>Anthropic</option> <option>OpenAI</option> <option>Google</option>
+                         </select>
+                         <select id="dest-model" disabled>
+                             <option selected>claude-3-opus-20240229</option> <option>claude-3-sonnet-20240229</option>
+                         </select>
+                     </div>
+                     <span class="toolbar-lock-icon" title="Destination Locked">🔒</span>
+                     <button class="toolbar-fork-button" disabled>
+                        <span>🍴</span> Fork Session
+                     </button>
+                 </div>
+
+                 <div class="chat-history">
+                    <div class="chat-bubble user-message">Write an email for user onboarding.</div>
+                    <div class="chat-bubble ai-message">Subject: Welcome to [App]! Let's Get Started...</div>
+                    <div class="chat-bubble user-message">Make it more concise and add a CTA to upgrade.</div>
+                    <div class="chat-bubble ai-message">Subject: Welcome to [App]! Quick Start & Upgrade Option...</div>
+                 </div>
+            </div>
+
+            <div class="input-area-container">
+                <textarea class="prompt-input" placeholder="Edit the enhanced prompt or enter a new one...">Subject: Welcome to [App]! Quick Start & Upgrade Option...</textarea>
+                <div class="controls">
+                    <div class="control-group">
+                         <span id="type-icon" class="icon" title="Improvement Type">✨</span>
+                        <select id="improvement-type">
+                            <option value="enhance" selected>Enhance Prompt</option>
+                            <option value="code">Code Development</option>
+                            <option value="arch">Software Architect</option>
+                            <option value="explain">Explanatory and detailed.</option>
+                            <option value="corp">Professional Corporate</option>
+                            <option value="desc">Clear and Descriptive</option>
+                        </select>
+                    </div>
+                     <div class="control-group">
+                          <span id="style-icon" class="icon" title="Style">🎨</span>
+                         <select id="improvement-style">
+                            <option value="none" selected>No Style</option>
+                            <option value="concise">Concisely</option>
+                            <option value="explain">Explanatory</option>
+                            <option value="formal">Formally</option>
+                            <option value="pretty">Pretty & Dense</option>
+                            <option value="candid">Candidly</option>
+                            <option value="chatty">Chatty</option>
+                            <option value="witty">Witty</option>
+                            <option value="straight">Straight shooting</option>
+                            <option value="encourage">Encouraging</option>
+                            <option value="simple">Like im 5</option>
+                            <option value="skeptic">Skeptical</option>
+                            <option value="trad">Traditional</option>
+                            <option value="fwd">Forward thinking</option>
+                            <option value="poetic">Poetic</option>
+                        </select>
+                    </div>
+                    <button class="btn-submit">Submit</button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Right Sidebar -->
+        <aside id="right-sidebar" class="sidebar right-sidebar">
+             <button id="right-toggle" class="sidebar-toggle right-toggle" title="Toggle Settings Sidebar">&gt;</button>
+             <div class="sidebar-header">
+                 <h2>Settings</h2>
+             </div>
+             <div class="config-section">
+                <h3><span class="icon">⚙️</span> Interaction LLM</h3>
+                <div class="form-group">
+                    <label>Provider</label> <p class="locked-setting">OpenAI</p>
+                </div>
+                <div class="form-group">
+                    <label>Model</label> <p class="locked-setting">gpt-4o</p>
+                </div>
+                 <div class="form-group">
+                    <label>Temperature</label> <p class="locked-setting">0.7</p>
+                </div>
+                 <div class="form-group">
+                    <label>Max Tokens</label> <p class="locked-setting">1024</p>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // --- Icon Mapping ---
+        const typeIcons = {
+            enhance: '✨', code: '💻', arch: '🏗️', explain: '📖', corp: '👔', desc: '📝', default: '✨'
+        };
+        const styleIcons = {
+            none: '🎨', concise: '✂️', explain: '🧐', formal: '🏛️', pretty: '💎', candid: '🙂',
+            chatty: '💬', witty: '😉', straight: '🎯', encourage: '👍', simple: '👶',
+            skeptic: '🤔', trad: '📜', fwd: '🚀', poetic: '✍️', default: '🎨'
+        };
+
+        // --- Element References ---
+        const leftSidebar = document.getElementById('left-sidebar');
+        const rightSidebar = document.getElementById('right-sidebar');
+        const leftToggle = document.getElementById('left-toggle');
+        const rightToggle = document.getElementById('right-toggle');
+        const typeSelect = document.getElementById('improvement-type');
+        const styleSelect = document.getElementById('improvement-style');
+        const typeIconSpan = document.getElementById('type-icon');
+        const styleIconSpan = document.getElementById('style-icon');
+        const destToolbar = document.getElementById('dest-toolbar'); // Reference toolbar
+
+        // --- Sidebar Toggle Logic ---
+        leftToggle.addEventListener('click', () => {
+            leftSidebar.classList.toggle('retracted');
+            leftToggle.innerHTML = leftSidebar.classList.contains('retracted') ? '&gt;' : '&lt;';
+        });
+
+        rightToggle.addEventListener('click', () => {
+            rightSidebar.classList.toggle('retracted');
+            rightToggle.innerHTML = rightSidebar.classList.contains('retracted') ? '&lt;' : '&gt;';
+        });
+
+        // --- Dynamic Icon Update Logic ---
+        function updateIcon(selectElement, iconSpan, iconMap) {
+            const selectedValue = selectElement.value;
+            iconSpan.innerHTML = iconMap[selectedValue] || iconMap.default;
+        }
+
+        typeSelect.addEventListener('change', () => updateIcon(typeSelect, typeIconSpan, typeIcons));
+        styleSelect.addEventListener('change', () => updateIcon(styleSelect, styleIconSpan, styleIcons));
+
+        // --- Initial Setup ---
+        document.addEventListener('DOMContentLoaded', () => {
+             updateIcon(typeSelect, typeIconSpan, typeIcons);
+             updateIcon(styleSelect, styleIconSpan, styleIcons);
+
+             // Example: Lock/unlock toolbar based on whether chat history exists
+             const hasHistory = document.querySelector('.chat-history .chat-bubble');
+             const toolbarSelects = destToolbar.querySelectorAll('select');
+             const toolbarButton = destToolbar.querySelector('.toolbar-fork-button');
+
+             if (hasHistory) {
+                 destToolbar.classList.add('locked');
+                 toolbarSelects.forEach(el => el.disabled = true);
+                 if(toolbarButton) toolbarButton.disabled = true; // Disable fork button too
+             } else {
+                 destToolbar.classList.remove('locked');
+                 toolbarSelects.forEach(el => el.disabled = false);
+                  if(toolbarButton) toolbarButton.disabled = false;
+             }
+        });
+    </script>
+</body>
+</html>

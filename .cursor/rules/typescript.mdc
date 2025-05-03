@@ -1,0 +1,81 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+[FORBIDDEN PATTERNS]
+DO NOT:
+* Add "just in case" features
+* Create abstractions without immediate use
+* Mix multiple responsibilities
+* Implement future requirements
+* Optimize prematurely
+
+[CODE RULES AND GUIDELINES]
+
+Rules (Mandatory):
+
+- File Encoding: Specify file encoding (usually utf-8) when reading or writing a file.
+- Versioning: Increment the smallest version number if one exists; otherwise, create one using `__version__` or appropriate versioning for the language.
+
+Guidelines (Recommended):
+
+- Best Practices: Follow coding and security best practices for the language and framework.
+- Error Handling: Handle errors gracefully with clear, human-readable messages.
+- Naming Conventions: Use meaningful names for variables, functions, and classes.
+- DRY Principle: Avoid code duplication.
+- Code Modularity: Break down complex tasks into smaller functions or methods.
+- Performance Optimization: Consider algorithmic efficiency, memory usage, and scalability.
+- Named Constants: Use named constants instead of magic numbers.
+- Change Tracking: Provide a concise bullet list of changes made to each file and add it to the [CHANGELOG.md](mdc:CHANGELOG.md)
+- Failure Tracking: Provide code snippets and brief explanation about attempts at resolving code issues that fail and add it to the [AIFAILURES.md](mdc:AIFAILURES.md)
+- Comments: Explain complex logic or design choices in comments.
+- Input Validation: Implement input validation and sanitization.
+- Design Patterns: Use appropriate design patterns and architectural principles.
+- Environment Compatibility: Ensure code compatibility with the target environment.
+- Asynchronous Programming: Use asynchronous techniques when appropriate.
+
+[LANGUAGE-SPECIFIC GUIDELINES]
+
+[NODE.JS / JAVASCRIPT / TYPESCRIPT SPECIFIC GUIDELINES]
+
+- Style Guide: Adhere to the Node.js style guide or a commonly accepted JavaScript/TypeScript style guide (e.g., Airbnb, Standard).
+- Modules: Use Node.js core modules like `fs` and `path` where relevant. Always prefer ES Modules where possible, or rely on CommonJS if project constraints require it.
+- Documentation: Use JSDoc for documenting modules, functions, and classes. For TypeScript, leverage TSDoc annotations when needed.
+- Comments: Use `//` followed by a single space for single-line comments. Place comments on separate lines to explain non-obvious sections of code.
+- JSDoc Comments: See @
+- Variable Declarations: Use `const` and `let` instead of `var` to ensure proper scoping and immutability.
+- Asynchronous Programming: Employ Promises or `async/await` with proper error handling (`try/catch`). Avoid callback nesting by refactoring to async patterns.
+- Indentation: Use a consistent indentation style (commonly 2 spaces) throughout the codebase.
+- ES6+ Features: Use arrow functions, destructuring, template literals, and other ES6+ features for concise and expressive code.
+- ESLint Configuration: Use ESLint with a shared configuration or your project's standard rules. Consider integrating Prettier for automatic code formatting.
+- Testing and Coverage: Utilize a recognized testing framework (e.g., Jest, Mocha) for unit and integration tests. Use coverage tools (e.g., `nyc` or built-in Jest coverage) to maintain visibility into untested paths.
+- Environment Variables: Manage sensitive or environment-specific configurations via `.env` files and libraries like `dotenv`, ensuring secrets remain out of version control.
+- Security Practices: Run `pnpm audit` frequently, updating dependencies to address known vulnerabilities. Consider using additional security checks such as `pnpm audit fix` when feasible.
+- Performance Considerations: Use diagnostic tools like the Chrome DevTools profiler, `node --prof`, or third-party modules (e.g., `clinic`) to identify bottlenecks before optimizing.
+- Runtime Compatibility: Identify target Node.js versions or browsers for front-end code, ensuring that language features are supported or transpiled as needed.
+
+[ADDITIONAL TYPESCRIPT SPECIFIC GUIDELINES]
+
+- Type Specifications: Always specify types for function parameters, return values, and variables to leverage TypeScript's type-checking capabilities.
+- Interfaces: Use interfaces to define the structure of objects and ensure type consistency across the codebase.
+- Enums: Utilize enums or string literal unions for named constants, improving readability and maintainability.
+- Advanced Types: Use union types, intersection types, and type aliases to express complex type relationships.
+- Immutability: Use the `readonly` keyword to declare immutable properties and prevent unintentional mutations.
+- Type Inference: Let TypeScript infer types where it improves clarity, but provide explicit annotations when necessary for self-documentation or complex return types.
+- Avoid `any`: Use the `any` type only when absolutely necessary, as it bypasses TypeScript's compile-time checks.
+- Strict Type Checking: Enable strict options (e.g., `strictNullChecks`, `noImplicitAny`) to catch potential issues early.
+- Access Modifiers: Use `public`, `private`, and `protected` to clearly convey visibility and encapsulation intentions.
+- Generics: Utilize TypeScript's generics to build reusable, type-safe components that adapt to different data types.
+- Decorators: In applicable projects, leverage experimental decorators for metadata or dependency injection. Keep them consistent with the project configuration.
+- Type Definitions: Where external libraries lack type definitions, use community-maintained `@types` packages or create your own `d.ts` files.
+
+[DEPENDENCY MANAGEMENT]
+
+- Listing Dependencies: List all external dependencies at the end of the code output.
+- Installation Instructions: Provide installation instructions using `pnpm add` for JavaScript/TypeScript.
+
+[VERSION CONTROL]
+
+- Version Increment: Increment the smallest version number if one exists.
+- Version Creation: If no version exists, create one using an appropriate versioning method (for instance, adding a comment or a constant in the code).

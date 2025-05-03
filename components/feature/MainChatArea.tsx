@@ -4,133 +4,138 @@ import { useEffect, useRef } from "react";
 import { useSessionStore } from "@/store/sessionStore";
 import { HistoryDisplay } from "./HistoryDisplay";
 import { PromptInputArea } from "./PromptInputArea";
-import { ImprovePromptRequest, ImprovePromptResponse, NameSessionRequest, NameSessionResponse } from "@/types/api";
+import { LlmToolbar } from "./LlmToolbar";
 import { fetchWithErrorHandling } from "@/lib/utils";
+import { LlmSettings } from "@/types";
+import { toast } from "sonner";
+
+// Define the expected shape of the API response
+interface GenerateApiResponse {
+  completion?: string;
+  error?: string;
+}
 
 export function MainChatArea() {
-  const { 
-    sessions, 
+  const {
+    sessions,
     activeSessionUUID,
     addMessageToActiveSession,
     updateSessionName,
-    setError
+    setError,
+    setLoading,
+    currentError
   } = useSessionStore();
-  
+
   const hasNamedSession = useRef<Record<string, boolean>>({});
-  
+
   const activeSession = activeSessionUUID ? sessions[activeSessionUUID] : null;
   const messages = activeSession?.messages || [];
-  
+  const interactionLlmSettings = activeSession?.lockedSettings.interactionLlm;
+
+  useEffect(() => {
+    if (currentError) {
+      toast.error("Error", {
+          description: currentError.message,
+          onDismiss: () => setError(null),
+          onAutoClose: () => setError(null),
+      });
+    }
+  }, [currentError, setError]);
+
   const handleSubmitPrompt = async (
     userInput: string,
     improvementTypeId: string,
     improvementStyle: string
-  ) => {
-    if (!activeSessionUUID) return;
-    
+  ): Promise<string | null> => {
+    if (!activeSessionUUID || !interactionLlmSettings) {
+      setError({ message: "Cannot generate completion: No active session or interaction LLM settings found." });
+      return null;
+    }
+
+    setLoading(true);
+
     try {
-      // Add user message to session
       addMessageToActiveSession({
         role: 'user',
         content: userInput
       });
-      
-      // Mock API for now - in production would call the real API
-      // const response = await fetchWithErrorHandling<ImprovePromptResponse>(
-      //   '/api/improve',
-      //   {
-      //     method: 'POST',
-      //     headers: { 'Content-Type': 'application/json' },
-      //     body: JSON.stringify({
-      //       sessionUUID: activeSessionUUID,
-      //       userInput,
-      //       improvementTypeId,
-      //       improvementStyle
-      //     } as ImprovePromptRequest)
-      //   }
-      // );
-      
-      // Mock response - simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      let improvedPrompt = "";
-      
-      // Simple mock improvement logic
-      if (improvementTypeId === "enhance-basic") {
-        improvedPrompt = `${userInput} ${improvementStyle === "Concisely" ? "Keep your response brief and to the point." : 
-          improvementStyle === "Explanatory" ? "Please provide a detailed explanation with examples." :
-          improvementStyle === "Formally" ? "Use formal language and professional tone." :
-          improvementStyle === "Like I'm 5" ? "Explain this in simple terms that a child could understand." :
-          ""}`;
-      } else if (improvementTypeId === "summarize") {
-        improvedPrompt = `Summarize the following text: ${userInput} ${improvementStyle !== "No Style" ? `Style: ${improvementStyle}` : ""}`;
-      } else if (improvementTypeId === "clarify") {
-        improvedPrompt = `I need clear instructions for the following task: ${userInput} ${improvementStyle !== "No Style" ? `Make the instructions ${improvementStyle.toLowerCase()}.` : ""}`;
-      } else if (improvementTypeId === "creative") {
-        improvedPrompt = `Write creatively about: ${userInput} ${improvementStyle !== "No Style" ? `In a ${improvementStyle.toLowerCase()} style.` : ""}`;
+
+      // --- Call Backend API for Generation ---
+      console.log(`Calling /api/generate with settings:`, interactionLlmSettings);
+      console.log(`User Prompt:`, userInput);
+      // systemPromptOverride could be added here based on improvement logic if needed
+      const systemPromptForApi = interactionLlmSettings.systemPrompt;
+
+      const response = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              settings: interactionLlmSettings,
+              prompt: userInput,
+              systemPromptOverride: systemPromptForApi // Pass system prompt
+          }),
+      });
+
+      const result: GenerateApiResponse = await response.json();
+
+      if (!response.ok || result.error) {
+          throw new Error(result.error || `API request failed with status ${response.status}`);
       }
-      
-      // Add assistant message to session
+
+      if (!result.completion) {
+          throw new Error("API response did not contain a completion.");
+      }
+
+      // Add assistant message from API response
       addMessageToActiveSession({
         role: 'assistant',
-        content: improvedPrompt
+        content: result.completion
       });
-      
-      // Auto-name session after first interaction (if not already named)
-      const shouldNameSession = 
-        !hasNamedSession.current[activeSessionUUID] && 
-        activeSession?.name.startsWith('Session ');
-      
+
+      // --- Auto-name session logic (Keep as is) ---
+      const shouldNameSession =
+        activeSession &&
+        !hasNamedSession.current[activeSessionUUID] &&
+        activeSession.name.startsWith('Session ');
+
       if (shouldNameSession) {
         hasNamedSession.current[activeSessionUUID] = true;
-        
-        // Mock session naming
         setTimeout(() => {
           if (!activeSessionUUID) return;
-          
-          let sessionName = "";
-          if (userInput.length < 30) {
-            sessionName = userInput;
-          } else {
-            sessionName = userInput.substring(0, 30) + "...";
-          }
-          
+          let sessionName = userInput.length < 30 ? userInput : userInput.substring(0, 30) + "...";
           updateSessionName(activeSessionUUID, sessionName);
         }, 500);
-        
-        // In production, would call actual API
-        // const nameResponse = await fetchWithErrorHandling<NameSessionResponse>(
-        //   '/api/name-session',
-        //   {
-        //     method: 'POST',
-        //     headers: { 'Content-Type': 'application/json' },
-        //     body: JSON.stringify({
-        //       sessionUUID: activeSessionUUID,
-        //       initialPrompt: userInput,
-        //       firstResponse: improvedPrompt
-        //     } as NameSessionRequest)
-        //   }
-        // );
-        // 
-        // updateSessionName(activeSessionUUID, nameResponse.sessionName);
       }
-      
-      return improvedPrompt;
-    } catch (error) {
-      console.error('Error improving prompt:', error);
-      setError({ 
-        message: error instanceof Error 
-          ? error.message 
-          : "Failed to improve prompt. Please try again." 
+      // --- End Auto-name ---
+
+      return null; // Input area doesn't need updating
+
+    } catch (error: any) {
+      console.error('Error calling /api/generate:', error);
+      setError({
+        message: error instanceof Error
+          ? error.message
+          : "An unexpected error occurred during LLM generation."
       });
       return null;
+    } finally {
+        setLoading(false);
     }
   };
-  
+
+  const isInteractionLlmConfigured = !!activeSession?.messages.length && activeSession.messages.length > 0;
+
   return (
-    <div className="flex flex-col h-full">
-      <HistoryDisplay messages={messages} />
-      <PromptInputArea onSubmit={handleSubmitPrompt} isConfigured={messages.length > 0 || false} />
+    <div className="flex flex-col h-full relative">
+      <div className="absolute top-0 left-0 right-0 z-10 p-2 flex justify-center pointer-events-none">
+        <div className="pointer-events-auto">
+          <LlmToolbar />
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto pt-[140px]">
+        <HistoryDisplay messages={messages} />
+      </div>
+      <PromptInputArea onSubmit={handleSubmitPrompt} isConfigured={isInteractionLlmConfigured} />
     </div>
   );
 }

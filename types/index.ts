@@ -24,6 +24,9 @@ export interface LlmSettings {
   model: string;
   temperature?: number;
   maxTokens?: number;
+  systemPrompt?: string;
+  baseUrl?: string;
+  azureApiVersion?: string;
 }
 
 export interface ImprovementType {

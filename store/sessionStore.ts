@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
 import { ImprovementOptions, LlmSettings, Message, SessionData } from "@/types";
+import { getDefaultSettings } from "@/lib/model_details";
 
 interface SessionState {
   sessions: Record<string, SessionData>;
@@ -12,6 +13,7 @@ interface SessionState {
   isConfigSidebarOpen: boolean;
   currentError: { message: string } | null;
   improvementOptions: ImprovementOptions | null;
+  isLoading: boolean;
 
   // Session Actions
   createNewSession: () => string;
@@ -19,35 +21,26 @@ interface SessionState {
   setActiveSession: (uuid: string) => void;
   updateSessionName: (uuid: string, name: string) => void;
   deleteSession: (uuid: string) => void;
-  
+
   // Message Actions
   addMessageToActiveSession: (message: Omit<Message, 'timestamp'>) => void;
-  
+
   // LLM Settings Actions
   updateInteractionLlm: (uuid: string, settings: LlmSettings) => void;
   updateDestinationLlm: (uuid: string, settings: LlmSettings) => void;
-  
+
   // UI Actions
   toggleSessionSidebar: () => void;
   toggleConfigSidebar: () => void;
   setError: (error: { message: string } | null) => void;
-  
+  setLoading: (loading: boolean) => void;
+
   // Data Actions
   setImprovementOptions: (options: ImprovementOptions) => void;
 }
 
-// Default LLM settings
-const defaultInteractionLlm: LlmSettings = {
-  provider: 'OpenAI',
-  model: 'gpt-4',
-  temperature: 0.7,
-  maxTokens: 1024
-};
-
-const defaultDestinationLlm: LlmSettings = {
-  provider: 'OpenAI',
-  model: 'gpt-3.5-turbo',
-};
+// Get default settings from the central config
+const defaultSettings = getDefaultSettings();
 
 export const useSessionStore = create<SessionState>()(
   persist(
@@ -58,55 +51,56 @@ export const useSessionStore = create<SessionState>()(
       isConfigSidebarOpen: true,
       currentError: null,
       improvementOptions: null,
+      isLoading: false,
 
       createNewSession: () => {
         const uuid = uuidv4();
         const timestamp = Date.now();
-        
+
         const newSession: SessionData = {
           uuid,
           name: `Session ${new Date(timestamp).toLocaleString()}`,
           createdAt: timestamp,
           messages: [],
           lockedSettings: {
-            interactionLlm: { ...defaultInteractionLlm },
-            destinationLlm: { ...defaultDestinationLlm }
+            interactionLlm: { ...defaultSettings },
+            destinationLlm: { ...defaultSettings }
           }
         };
-        
+
         set((state) => ({
           sessions: { ...state.sessions, [uuid]: newSession },
           activeSessionUUID: uuid
         }));
-        
+
         return uuid;
       },
 
       forkSession: (uuid: string) => {
         const { sessions } = get();
         const sourceSession = sessions[uuid];
-        
+
         if (!sourceSession) return uuid;
-        
+
         const newUuid = uuidv4();
         const timestamp = Date.now();
-        
+
         const newSession: SessionData = {
           uuid: newUuid,
           name: `${sourceSession.name} (Fork)`,
           createdAt: timestamp,
           messages: [...sourceSession.messages],
           lockedSettings: {
-            interactionLlm: { ...defaultInteractionLlm },
-            destinationLlm: { ...defaultDestinationLlm }
+            interactionLlm: { ...defaultSettings },
+            destinationLlm: { ...defaultSettings }
           }
         };
-        
+
         set((state) => ({
           sessions: { ...state.sessions, [newUuid]: newSession },
           activeSessionUUID: newUuid
         }));
-        
+
         return newUuid;
       },
 
@@ -132,7 +126,7 @@ export const useSessionStore = create<SessionState>()(
           const activeUUID = state.activeSessionUUID === uuid
             ? Object.keys(restSessions)[0] || null
             : state.activeSessionUUID;
-            
+
           return {
             sessions: restSessions,
             activeSessionUUID: activeUUID
@@ -143,12 +137,12 @@ export const useSessionStore = create<SessionState>()(
       addMessageToActiveSession: (message) => {
         const { activeSessionUUID } = get();
         if (!activeSessionUUID) return;
-        
+
         const fullMessage: Message = {
           ...message,
           timestamp: Date.now()
         };
-        
+
         set((state) => ({
           sessions: {
             ...state.sessions,
@@ -207,6 +201,10 @@ export const useSessionStore = create<SessionState>()(
 
       setError: (error) => {
         set({ currentError: error });
+      },
+
+      setLoading: (loading) => {
+        set({ isLoading: loading });
       },
 
       setImprovementOptions: (options) => {

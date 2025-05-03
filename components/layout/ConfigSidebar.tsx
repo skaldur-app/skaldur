@@ -1,52 +1,228 @@
 "use client";
 
 import { Settings } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useSessionStore } from "@/store/sessionStore";
-import { LlmConfiguration } from "@/components/feature/LlmConfiguration";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
 import { LlmSettings } from "@/types";
+import { llmProviderDetails, getProviderById, getModelById, LlmModelDetails, LlmProviderId, isLlmProviderId } from "@/lib/model_details";
+import { ErrorModal } from "@/components/ui/ErrorModal";
+import { Input } from "@/components/ui/input";
+import { ValidationResult } from "@/lib/llm_providers/types";
+import { AZURE_API_VERSION as DEFAULT_AZURE_API_VERSION } from "@/lib/llm_providers/azure_openai";
 
 export function ConfigSidebar() {
-  const { 
-    sessions, 
-    activeSessionUUID, 
+  const {
+    sessions,
+    activeSessionUUID,
     isConfigSidebarOpen,
     toggleConfigSidebar,
     updateInteractionLlm,
-    updateDestinationLlm,
     forkSession
   } = useSessionStore();
 
   const [interactionLlm, setInteractionLlm] = useState<LlmSettings | null>(null);
-  const [destinationLlm, setDestinationLlm] = useState<LlmSettings | null>(null);
+  const [availableModels, setAvailableModels] = useState<LlmModelDetails[]>([]);
   const [isConfigured, setIsConfigured] = useState(false);
+  const [modelDetails, setModelDetails] = useState<LlmModelDetails | null>(null);
+  const [azureDeploymentName, setAzureDeploymentName] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [validationError, setValidationError] = useState<{ title: string; description: string } | null>(null);
+  const [azureEndpoint, setAzureEndpoint] = useState<string>("");
+  const [awsRegion, setAwsRegion] = useState<string>("");
 
   const activeSession = activeSessionUUID ? sessions[activeSessionUUID] : null;
-  
+
   // Initialize from session settings
   useEffect(() => {
     if (!activeSession) return;
-    
     const hasMessages = activeSession.messages.length > 0;
-    
     setInteractionLlm(activeSession.lockedSettings.interactionLlm);
-    setDestinationLlm(activeSession.lockedSettings.destinationLlm);
     setIsConfigured(hasMessages);
   }, [activeSession]);
+
+  // Update models and details when provider/model changes
+  useEffect(() => {
+    // Read provider/model from state, but use functional updates for setters
+    const providerId = interactionLlm?.provider;
+    const modelId = interactionLlm?.model;
+
+    if (!providerId || !modelId) return;
+
+    if (isLlmProviderId(providerId)) {
+      const provider = getProviderById(providerId);
+      if (provider) {
+        setAvailableModels(provider.models);
+        const currentModelDetails = getModelById(modelId);
+        setModelDetails(currentModelDetails || null);
+
+        const modelExists = provider.models.some(m => m.id === modelId);
+
+        // Use functional update for interactionLlm state changes
+        setInteractionLlm(currentLlm => {
+            if (!currentLlm || currentLlm.provider !== providerId || currentLlm.model !== modelId) {
+                // State changed during effect execution, bail out
+                return currentLlm;
+            }
+
+            let updateNeeded = false;
+            let newSettings = { ...currentLlm };
+
+            // If selected model doesn't exist for the provider, reset to default
+            if (!modelExists && provider.models.length > 0) {
+                newSettings = {
+                    ...currentLlm,
+                    model: provider.models[0].id,
+                    temperature: provider.models[0].defaultTemperature,
+                    maxTokens: provider.models[0].defaultMaxOutputTokens,
+                };
+                updateNeeded = true;
+            }
+            // Ensure temperature is undefined if not supported by current model
+            else if (currentModelDetails && !currentModelDetails.supportsTemperature && currentLlm.temperature !== undefined) {
+                newSettings = { ...currentLlm, temperature: undefined };
+                updateNeeded = true;
+            }
+            // Optional: Adjust maxTokens if current value exceeds model max (or keep it?)
+            // else if (currentModelDetails && currentLlm.maxTokens !== undefined && currentModelDetails.maxOutputTokens < (currentLlm.maxTokens || 0)) {
+            //     newSettings = { ...currentLlm, maxTokens: currentModelDetails.maxOutputTokens }; // Example: Cap at max
+            //     updateNeeded = true;
+            // }
+
+            return updateNeeded ? newSettings : currentLlm; // Only return new object if changed
+        });
+      }
+    } else {
+       // Handle invalid provider ID
+       setAvailableModels([]);
+       setModelDetails(null);
+       console.warn(`Invalid provider ID found in interactionLlm state: ${providerId}`);
+    }
+     // Dependencies are the provider and model strings
+  }, [interactionLlm?.provider, interactionLlm?.model]);
+
+  // Update Azure deployment name state when interactionLlm changes (if Azure)
+  useEffect(() => {
+     // This effect ONLY depends on interactionLlm
+    if (interactionLlm?.provider === 'azure') {
+      setAzureDeploymentName(interactionLlm.model);
+    } else {
+        setAzureDeploymentName("");
+    }
+     // Keep interactionLlm as dependency, it's read directly
+  }, [interactionLlm]);
+
+  // Initialize endpoint/region/baseUrl states if they were previously stored/configured
+  useEffect(() => {
+    if (interactionLlm) {
+        setAzureEndpoint(interactionLlm.provider === 'azure' ? (interactionLlm.baseUrl || process.env.NEXT_PUBLIC_AZURE_OPENAI_ENDPOINT || "") : "");
+        setAwsRegion(interactionLlm.provider === 'anthropic-bedrock' ? (interactionLlm.baseUrl || process.env.NEXT_PUBLIC_AWS_REGION || process.env.AWS_REGION || "") : "");
+        // Note: Storing endpoint/region in baseUrl is a temporary workaround. Ideally, LlmSettings would have dedicated fields.
+        // For now, we store them in baseUrl in the settings object for persistence.
+        // A better approach would be to extend LlmSettings properly.
+
+        // Initialize azureDeploymentName if provider is azure
+        if (interactionLlm.provider === 'azure') {
+            setAzureDeploymentName(interactionLlm.model);
+        } else {
+             setAzureDeploymentName("");
+        }
+    }
+  }, [interactionLlm]);
 
   const handleForkSession = () => {
     if (!activeSessionUUID) return;
     forkSession(activeSessionUUID);
   };
 
-  const handleSaveConfig = () => {
-    if (!activeSessionUUID || !interactionLlm || !destinationLlm) return;
-    
-    updateInteractionLlm(activeSessionUUID, interactionLlm);
-    updateDestinationLlm(activeSessionUUID, destinationLlm);
-    setIsConfigured(true);
+  // Helper function to update LlmSettings state
+  const updateSetting = (key: keyof LlmSettings, value: any) => {
+     setInteractionLlm(current => current ? { ...current, [key]: value } : null);
+  };
+
+  const handleSaveConfig = async () => {
+    if (!activeSessionUUID || !interactionLlm || isSaving) return;
+    setIsSaving(true);
+    setValidationError(null);
+
+    const providerId = interactionLlm.provider as LlmProviderId;
+
+    // --- Construct Body for Validation API ---
+    const validationBody: any = { providerId };
+    try {
+      if (providerId === 'openai' || providerId === 'anthropic') {
+         validationBody.baseUrl = interactionLlm.baseUrl; // Get from state
+      }
+      if (providerId === 'azure') {
+         if (!azureEndpoint || !azureDeploymentName) {
+            setValidationError({ title: "Configuration Error", description: "Azure Endpoint and Deployment Name are required." });
+            setIsSaving(false);
+            return;
+         }
+         validationBody.endpoint = azureEndpoint;
+         validationBody.deploymentName = azureDeploymentName;
+         validationBody.apiVersion = interactionLlm.azureApiVersion; // Get from state
+         // Update the stored settings object before saving
+         interactionLlm.model = azureDeploymentName; // Model IS deployment name
+         interactionLlm.baseUrl = azureEndpoint; // Store endpoint in baseUrl field for now
+      }
+      if (providerId === 'anthropic-bedrock') {
+          if (!awsRegion) {
+             setValidationError({ title: "Configuration Error", description: "AWS Region is required for Bedrock." });
+             setIsSaving(false);
+             return;
+          }
+         validationBody.awsRegion = awsRegion;
+         // Store region in baseUrl field for now
+         interactionLlm.baseUrl = awsRegion;
+      }
+
+      // --- Call Validation API ---
+      console.log("Calling /api/validate-config with body:", validationBody);
+      const response = await fetch('/api/validate-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(validationBody),
+      });
+
+      const result: ValidationResult = await response.json();
+
+      if (!response.ok || !result.success) {
+        setValidationError({
+          title: "LLM Provider Validation Failed",
+          description: result.error || `API request failed with status ${response.status}`
+        });
+        setIsSaving(false);
+        return; // Prevent saving if validation fails
+      }
+
+      // --- Validation Successful: Save configuration ---
+      // Update local state only after successful validation
+      updateInteractionLlm(activeSessionUUID, interactionLlm);
+      setIsConfigured(true); // Lock config after successful save
+
+    } catch (error: any) {
+      console.error("Error calling /api/validate-config:", error);
+      setValidationError({
+          title: "Error Validating Configuration",
+          description: error.message || "An unexpected error occurred contacting the validation API."
+      });
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const sidebarContent = (
@@ -54,32 +230,28 @@ export function ConfigSidebar() {
       <div className="p-4 border-b border-border">
         <h2 className="text-lg font-semibold">Configuration</h2>
       </div>
-      
+
       <div className="p-4 space-y-6 flex-1 overflow-y-auto">
-        {!activeSession ? (
+        {!activeSession || !interactionLlm ? (
           <div className="text-muted-foreground">
             No active session.
           </div>
         ) : isConfigured ? (
+          // Read-only view
           <>
             <div>
               <h3 className="font-medium mb-2">Interaction LLM (Locked)</h3>
-              <div className="bg-muted p-3 rounded text-sm">
-                <div><span className="font-medium">Provider:</span> {interactionLlm?.provider}</div>
-                <div><span className="font-medium">Model:</span> {interactionLlm?.model}</div>
-                <div><span className="font-medium">Temperature:</span> {interactionLlm?.temperature}</div>
-                <div><span className="font-medium">Max Tokens:</span> {interactionLlm?.maxTokens}</div>
+              <div className="bg-muted p-3 rounded text-sm space-y-1">
+                <div><span className="font-medium">Provider:</span>
+                    {isLlmProviderId(interactionLlm.provider)
+                        ? getProviderById(interactionLlm.provider)?.name || interactionLlm.provider
+                        : interactionLlm.provider}
+                </div>
+                <div><span className="font-medium">Model:</span> {getModelById(interactionLlm.model)?.name || interactionLlm.model}</div>
+                {modelDetails?.supportsTemperature && <div><span className="font-medium">Temperature:</span> {interactionLlm.temperature?.toFixed(1)}</div>}
+                <div><span className="font-medium">Max Tokens:</span> {interactionLlm.maxTokens}</div>
               </div>
             </div>
-            
-            <div>
-              <h3 className="font-medium mb-2">Destination LLM (Locked)</h3>
-              <div className="bg-muted p-3 rounded text-sm">
-                <div><span className="font-medium">Provider:</span> {destinationLlm?.provider}</div>
-                <div><span className="font-medium">Model:</span> {destinationLlm?.model}</div>
-              </div>
-            </div>
-            
             <div className="pt-4">
               <Button onClick={handleForkSession} className="w-full">
                 Fork Session
@@ -90,41 +262,186 @@ export function ConfigSidebar() {
             </div>
           </>
         ) : (
+          // Editable view
           <>
             <div>
               <h3 className="font-medium mb-2">Interaction LLM</h3>
-              <p className="text-sm text-muted-foreground mb-3">
-                This LLM will process your prompts during this session.
-              </p>
-              {interactionLlm && (
-                <LlmConfiguration
-                  settings={interactionLlm}
-                  onChange={setInteractionLlm}
-                  showAdvanced={true}
-                />
-              )}
+              <div className="space-y-4">
+                 <div className="space-y-2">
+                    <Label htmlFor="provider">Provider</Label>
+                    <Select
+                      value={interactionLlm.provider}
+                      onValueChange={(value) => {
+                        const providerId = value as LlmProviderId;
+                        const defaultModelId = getProviderById(providerId)?.models[0]?.id || '';
+                        setInteractionLlm({
+                          ...(interactionLlm! || {}),
+                          provider: providerId,
+                          model: defaultModelId
+                        });
+                      }}
+                    >
+                      <SelectTrigger id="provider">
+                        <SelectValue placeholder="Select Provider" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {llmProviderDetails.map(provider => (
+                          <SelectItem key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Base URL (OpenAI, Anthropic) */}
+                  {(interactionLlm.provider === 'openai' || interactionLlm.provider === 'anthropic') && (
+                     <div className="space-y-2">
+                        <Label htmlFor="baseUrl">Base URL (Optional)</Label>
+                        <Input
+                            id="baseUrl"
+                            placeholder={interactionLlm.provider === 'openai' ? "e.g., https://your-openai-proxy/v1" : "e.g., https://your-anthropic-proxy"}
+                            value={interactionLlm.baseUrl || ''}
+                            onChange={(e) => updateSetting('baseUrl', e.target.value || undefined)}
+                            disabled={isSaving}
+                        />
+                         <p className="text-xs text-muted-foreground">Use for proxies or alternative endpoints.</p>
+                     </div>
+                  )}
+
+                  {/* Azure Inputs */}
+                  {interactionLlm.provider === 'azure' && (
+                    <>
+                        <div className="space-y-2">
+                            <Label htmlFor="azureEndpoint">Azure Endpoint <span className="text-red-500">*</span></Label>
+                            <Input
+                                id="azureEndpoint"
+                                placeholder="https://YOUR_RESOURCE.openai.azure.com/"
+                                value={azureEndpoint}
+                                onChange={(e) => setAzureEndpoint(e.target.value)}
+                                disabled={isSaving}
+                            />
+                        </div>
+                         <div className="space-y-2">
+                            <Label htmlFor="azureDeployment">Azure Deployment Name <span className="text-red-500">*</span></Label>
+                            <Input
+                                id="azureDeployment"
+                                placeholder="Enter your deployment name"
+                                value={azureDeploymentName}
+                                onChange={(e) => setAzureDeploymentName(e.target.value)}
+                                disabled={isSaving}
+                            />
+                            <p className="text-xs text-muted-foreground">The specific name you gave your model deployment in Azure OpenAI Studio.</p>
+                         </div>
+                         <div className="space-y-2">
+                            <Label htmlFor="azureApiVersion">API Version (Optional)</Label>
+                            <Input
+                                id="azureApiVersion"
+                                placeholder={`e.g., ${DEFAULT_AZURE_API_VERSION}`}
+                                value={interactionLlm.azureApiVersion || ''}
+                                onChange={(e) => updateSetting('azureApiVersion', e.target.value || undefined)}
+                                disabled={isSaving}
+                            />
+                             <p className="text-xs text-muted-foreground">Defaults to a recent stable version if left blank.</p>
+                         </div>
+                     </>
+                  )}
+
+                   {/* Bedrock Input */}
+                  {interactionLlm.provider === 'anthropic-bedrock' && (
+                     <div className="space-y-2">
+                        <Label htmlFor="awsRegion">AWS Region <span className="text-red-500">*</span></Label>
+                        <Input
+                            id="awsRegion"
+                            placeholder="e.g., us-east-1"
+                            value={awsRegion}
+                            onChange={(e) => setAwsRegion(e.target.value)}
+                            disabled={isSaving}
+                        />
+                         <p className="text-xs text-muted-foreground">The AWS region where your Bedrock models are available.</p>
+                     </div>
+                  )}
+
+                  {/* Model Select (Hide for Azure) */}
+                  {interactionLlm.provider !== 'azure' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="model">Model</Label>
+                        <Select
+                          value={interactionLlm.model}
+                          onValueChange={(value) => {
+                              const newModel = getModelById(value);
+                              setInteractionLlm({
+                                  ...interactionLlm,
+                                  model: value,
+                                  temperature: newModel?.defaultTemperature,
+                                  maxTokens: newModel?.defaultMaxOutputTokens,
+                              });
+                          }}
+                          disabled={availableModels.length === 0 || isSaving}
+                        >
+                          <SelectTrigger id="model">
+                            <SelectValue placeholder="Select Model" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableModels.map(model => (
+                              <SelectItem key={model.id} value={model.id}>
+                                {model.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                  )}
+
+                  {modelDetails?.supportsTemperature && (
+                    <div className="space-y-2">
+                        <div className="flex justify-between">
+                            <Label htmlFor="temperature">Temperature: {interactionLlm.temperature?.toFixed(1)}</Label>
+                        </div>
+                        <Slider
+                            id="temperature"
+                            min={0}
+                            max={1}
+                            step={0.1}
+                            value={[interactionLlm.temperature ?? modelDetails.defaultTemperature ?? 0.7]}
+                            onValueChange={(values) => setInteractionLlm({ ...interactionLlm, temperature: values[0] })}
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>Precise</span>
+                            <span>Creative</span>
+                        </div>
+                    </div>
+                  )}
+
+                 <div className="space-y-2">
+                      <div className="flex justify-between">
+                          <Label htmlFor="maxTokens">Max Tokens: {interactionLlm.maxTokens}</Label>
+                      </div>
+                      <Slider
+                          id="maxTokens"
+                          min={256} // Consider making this dynamic based on model if needed
+                          max={modelDetails?.maxOutputTokens || 4096} // Use model max
+                          step={256}
+                          value={[interactionLlm.maxTokens ?? modelDetails?.defaultMaxOutputTokens ?? 1024]}
+                          onValueChange={(values) => setInteractionLlm({ ...interactionLlm, maxTokens: values[0] })}
+                      />
+                       <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>Short</span>
+                            <span>Long (Max: {modelDetails?.maxOutputTokens || 'N/A'})</span>
+                      </div>
+                  </div>
+              </div>
             </div>
-            
-            <div className="mt-6">
-              <h3 className="font-medium mb-2">Destination LLM</h3>
-              <p className="text-sm text-muted-foreground mb-3">
-                This is the LLM your improved prompts will target.
-              </p>
-              {destinationLlm && (
-                <LlmConfiguration
-                  settings={destinationLlm}
-                  onChange={setDestinationLlm}
-                  showAdvanced={false}
-                />
-              )}
-            </div>
-            
-            <Button 
-              onClick={handleSaveConfig} 
+
+            <Button
+              onClick={handleSaveConfig}
               className="w-full mt-6"
-              disabled={!interactionLlm || !destinationLlm}
+              disabled={!interactionLlm || isSaving ||
+                  (interactionLlm.provider === 'azure' && (!azureDeploymentName || !azureEndpoint)) ||
+                  (interactionLlm.provider === 'anthropic-bedrock' && !awsRegion)
+              }
             >
-              Save Configuration
+              {isSaving ? "Validating & Saving..." : "Save Configuration"}
             </Button>
             <p className="text-xs text-muted-foreground mt-2">
               Settings will be locked for this session after saving.
@@ -132,33 +449,32 @@ export function ConfigSidebar() {
           </>
         )}
       </div>
+      <ErrorModal
+         isOpen={!!validationError}
+         onClose={() => setValidationError(null)}
+         title={validationError?.title || "Error"}
+         description={validationError?.description || "An unknown error occurred."}
+        />
     </div>
   );
 
   return (
     <>
-      {/* Mobile trigger */}
-      <Button 
-        variant="ghost" 
-        size="icon" 
-        className="h-10 w-10 md:hidden"
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-10 w-10"
         onClick={toggleConfigSidebar}
       >
         <Settings className="h-5 w-5" />
         <span className="sr-only">Toggle config sidebar</span>
       </Button>
 
-      {/* Mobile sidebar */}
       <Sheet open={isConfigSidebarOpen} onOpenChange={toggleConfigSidebar}>
         <SheetContent side="right" className="w-80 p-0">
           {sidebarContent}
         </SheetContent>
       </Sheet>
-
-      {/* Desktop sidebar */}
-      <div className="hidden md:block w-72 border-l border-border h-screen">
-        {sidebarContent}
-      </div>
     </>
   );
 }

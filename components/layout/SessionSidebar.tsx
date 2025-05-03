@@ -8,13 +8,13 @@ import { SessionListItem } from "@/components/feature/SessionListItem";
 import { useEffect } from "react";
 
 export function SessionSidebar() {
-  const { 
-    sessions, 
-    activeSessionUUID, 
+  const {
+    sessions,
+    activeSessionUUID,
     isSessionSidebarOpen,
     toggleSessionSidebar,
-    createNewSession, 
-    setActiveSession 
+    createNewSession,
+    setActiveSession
   } = useSessionStore();
 
   // Create a new session if none exist
@@ -38,19 +38,20 @@ export function SessionSidebar() {
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center p-4 border-b border-border">
+      <div className="flex items-center p-4 border-b border-border">
         <h2 className="text-lg font-semibold">Sessions</h2>
         <Button
           variant="outline"
           size="icon"
           onClick={handleNewSession}
           title="New Session"
+          className="ml-2 h-8 w-8"
         >
-          <PlusCircle className="h-5 w-5" />
+          <PlusCircle className="h-4 w-4" />
           <span className="sr-only">New Session</span>
         </Button>
       </div>
-      
+
       <div className="flex-1 overflow-y-auto">
         {sortedSessions.map((session) => (
           <SessionListItem
@@ -65,28 +66,23 @@ export function SessionSidebar() {
 
   return (
     <>
-      {/* Mobile trigger */}
-      <Button 
-        variant="ghost" 
-        size="icon" 
-        className="h-10 w-10 md:hidden"
+      {/* Sidebar trigger */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-10 w-10"
         onClick={toggleSessionSidebar}
       >
         <Menu className="h-5 w-5" />
         <span className="sr-only">Toggle session sidebar</span>
       </Button>
 
-      {/* Mobile sidebar */}
+      {/* Retractable sidebar */}
       <Sheet open={isSessionSidebarOpen} onOpenChange={toggleSessionSidebar}>
         <SheetContent side="left" className="w-80 p-0">
           {sidebarContent}
         </SheetContent>
       </Sheet>
-
-      {/* Desktop sidebar */}
-      <div className="hidden md:block w-64 border-r border-border h-screen">
-        {sidebarContent}
-      </div>
     </>
   );
 }
