@@ -5,6 +5,7 @@ import { persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
 import { ImprovementOptions, LlmSettings, Message, SessionData } from "@/types";
 import { getDefaultSettings } from "@/lib/model_details";
+import type { LlmProviderId } from "@/lib/model_details";
 
 interface SessionState {
   sessions: Record<string, SessionData>;
@@ -37,6 +38,10 @@ interface SessionState {
 
   // Data Actions
   setImprovementOptions: (options: ImprovementOptions) => void;
+
+  // Provider validation actions
+  markInteractionProviderValidated: (uuid: string, providerId: LlmProviderId) => void;
+  markDestinationProviderValidated: (uuid: string, providerId: LlmProviderId) => void;
 }
 
 // Get default settings from the central config
@@ -65,7 +70,9 @@ export const useSessionStore = create<SessionState>()(
           lockedSettings: {
             interactionLlm: { ...defaultSettings },
             destinationLlm: { ...defaultSettings }
-          }
+          },
+          validatedInteractionProviders: [],
+          validatedDestinationProviders: [],
         };
 
         set((state) => ({
@@ -93,7 +100,9 @@ export const useSessionStore = create<SessionState>()(
           lockedSettings: {
             interactionLlm: { ...defaultSettings },
             destinationLlm: { ...defaultSettings }
-          }
+          },
+          validatedInteractionProviders: [],
+          validatedDestinationProviders: [],
         };
 
         set((state) => ({
@@ -209,10 +218,49 @@ export const useSessionStore = create<SessionState>()(
 
       setImprovementOptions: (options) => {
         set({ improvementOptions: options });
-      }
+      },
+
+      markInteractionProviderValidated: (uuid, providerId) => {
+        set((state) => {
+          const session = state.sessions[uuid];
+          if (!session) return {};
+          const arr = session.validatedInteractionProviders || [];
+          if (arr.includes(providerId)) return {};
+          const updated = [...arr, providerId];
+          console.log('[Store] markInteractionProviderValidated:', uuid, providerId, updated);
+          return {
+            sessions: {
+              ...state.sessions,
+              [uuid]: {
+                ...session,
+                validatedInteractionProviders: updated,
+              },
+            },
+          };
+        });
+      },
+      markDestinationProviderValidated: (uuid, providerId) => {
+        set((state) => {
+          const session = state.sessions[uuid];
+          if (!session) return {};
+          const arr = session.validatedDestinationProviders || [];
+          if (arr.includes(providerId)) return {};
+          const updated = [...arr, providerId];
+          console.log('[Store] markDestinationProviderValidated:', uuid, providerId, updated);
+          return {
+            sessions: {
+              ...state.sessions,
+              [uuid]: {
+                ...session,
+                validatedDestinationProviders: updated,
+              },
+            },
+          };
+        });
+      },
     }),
     {
-      name: 'prompt-improver-storage',
+      name: 'skaldur-storage',
       partialize: (state) => ({
         sessions: state.sessions,
         activeSessionUUID: state.activeSessionUUID

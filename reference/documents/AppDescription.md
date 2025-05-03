@@ -1,4 +1,4 @@
-**Prompt Improver Web Application Concept**
+**Skaldur Web Application Concept**
 
 This web application provides a user interface designed for iteratively refining and enhancing text prompts intended for use with various Large Language Models (LLMs). It acts as an intelligent assistant, helping users transform basic ideas into well-structured and effective prompts optimized for specific AI providers and models.
 

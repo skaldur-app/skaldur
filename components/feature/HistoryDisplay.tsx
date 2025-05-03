@@ -23,7 +23,7 @@ export function HistoryDisplay({ messages }: HistoryDisplayProps) {
     return (
       <div className="flex-1 flex items-center justify-center p-6 text-center">
         <div className="max-w-md">
-          <h2 className="text-2xl font-bold mb-2">Welcome to Prompt Improver</h2>
+          <h2 className="text-2xl font-bold mb-2">Welcome to Skaldur</h2>
           <p className="text-muted-foreground mb-4">
             Enter a prompt below, select an improvement type and style, then watch
             as the AI helps refine it for your target LLM.

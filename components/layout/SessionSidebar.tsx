@@ -1,11 +1,12 @@
 "use client";
 
 import { PlusCircle, Menu } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useSessionStore } from "@/store/sessionStore";
 import { SessionListItem } from "@/components/feature/SessionListItem";
 import { useEffect } from "react";
+import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 
 export function SessionSidebar() {
   const {
@@ -80,6 +81,12 @@ export function SessionSidebar() {
       {/* Retractable sidebar */}
       <Sheet open={isSessionSidebarOpen} onOpenChange={toggleSessionSidebar}>
         <SheetContent side="left" className="w-80 p-0">
+          <VisuallyHidden.Root>
+            <SheetTitle>Session Management</SheetTitle>
+            <SheetDescription>
+              View, select, and create new chat sessions.
+            </SheetDescription>
+          </VisuallyHidden.Root>
           {sidebarContent}
         </SheetContent>
       </Sheet>

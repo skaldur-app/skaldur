@@ -1,9 +1,11 @@
 "use client";
 
-import { Settings } from "lucide-react";
+import { Settings, CheckCircle2 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
+  SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useSessionStore } from "@/store/sessionStore";
@@ -16,13 +18,14 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { LlmSettings } from "@/types";
 import { llmProviderDetails, getProviderById, getModelById, LlmModelDetails, LlmProviderId, isLlmProviderId } from "@/lib/model_details";
 import { ErrorModal } from "@/components/ui/ErrorModal";
 import { Input } from "@/components/ui/input";
 import { ValidationResult } from "@/lib/llm_providers/types";
 import { AZURE_API_VERSION as DEFAULT_AZURE_API_VERSION } from "@/lib/llm_providers/azure_openai";
+import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 
 export function ConfigSidebar() {
   const {
@@ -31,7 +34,8 @@ export function ConfigSidebar() {
     isConfigSidebarOpen,
     toggleConfigSidebar,
     updateInteractionLlm,
-    forkSession
+    forkSession,
+    markInteractionProviderValidated
   } = useSessionStore();
 
   const [interactionLlm, setInteractionLlm] = useState<LlmSettings | null>(null);
@@ -43,8 +47,10 @@ export function ConfigSidebar() {
   const [validationError, setValidationError] = useState<{ title: string; description: string } | null>(null);
   const [azureEndpoint, setAzureEndpoint] = useState<string>("");
   const [awsRegion, setAwsRegion] = useState<string>("");
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const activeSession = activeSessionUUID ? sessions[activeSessionUUID] : null;
+  const validatedProviders = activeSession?.validatedInteractionProviders || [];
 
   // Initialize from session settings
   useEffect(() => {
@@ -210,8 +216,8 @@ export function ConfigSidebar() {
       }
 
       // --- Validation Successful: Save configuration ---
-      // Update local state only after successful validation
       updateInteractionLlm(activeSessionUUID, interactionLlm);
+      markInteractionProviderValidated(activeSessionUUID, providerId);
       setIsConfigured(true); // Lock config after successful save
 
     } catch (error: any) {
@@ -222,6 +228,15 @@ export function ConfigSidebar() {
       });
     } finally {
         setIsSaving(false);
+    }
+  };
+
+  // Modified toggle function to handle focus return
+  const handleOpenChange = (open: boolean) => {
+    toggleConfigSidebar(); // Call the store action
+    if (!open && triggerRef.current) {
+      // Delay focus slightly to ensure sheet animation completes
+      setTimeout(() => triggerRef.current?.focus(), 50);
     }
   };
 
@@ -242,10 +257,17 @@ export function ConfigSidebar() {
             <div>
               <h3 className="font-medium mb-2">Interaction LLM (Locked)</h3>
               <div className="bg-muted p-3 rounded text-sm space-y-1">
-                <div><span className="font-medium">Provider:</span>
-                    {isLlmProviderId(interactionLlm.provider)
-                        ? getProviderById(interactionLlm.provider)?.name || interactionLlm.provider
-                        : interactionLlm.provider}
+                <div className="flex items-center gap-1">
+                  <span className="font-medium">Provider:</span>
+                  {isLlmProviderId(interactionLlm.provider)
+                      ? getProviderById(interactionLlm.provider)?.name || interactionLlm.provider
+                      : interactionLlm.provider}
+                  {(() => {
+                    console.log('[Sidebar] validatedProviders:', validatedProviders, 'checking:', interactionLlm.provider);
+                    return validatedProviders.includes(interactionLlm.provider as LlmProviderId);
+                  })() && (
+                    <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                  )}
                 </div>
                 <div><span className="font-medium">Model:</span> {getModelById(interactionLlm.model)?.name || interactionLlm.model}</div>
                 {modelDetails?.supportsTemperature && <div><span className="font-medium">Temperature:</span> {interactionLlm.temperature?.toFixed(1)}</div>}
@@ -268,7 +290,7 @@ export function ConfigSidebar() {
               <h3 className="font-medium mb-2">Interaction LLM</h3>
               <div className="space-y-4">
                  <div className="space-y-2">
-                    <Label htmlFor="provider">Provider</Label>
+                    <Label htmlFor="interaction_provider">Provider</Label>
                     <Select
                       value={interactionLlm.provider}
                       onValueChange={(value) => {
@@ -281,7 +303,7 @@ export function ConfigSidebar() {
                         });
                       }}
                     >
-                      <SelectTrigger id="provider">
+                      <SelectTrigger id="interaction_provider">
                         <SelectValue placeholder="Select Provider" />
                       </SelectTrigger>
                       <SelectContent>
@@ -297,9 +319,9 @@ export function ConfigSidebar() {
                   {/* Base URL (OpenAI, Anthropic) */}
                   {(interactionLlm.provider === 'openai' || interactionLlm.provider === 'anthropic') && (
                      <div className="space-y-2">
-                        <Label htmlFor="baseUrl">Base URL (Optional)</Label>
+                        <Label htmlFor="interaction_baseUrl">Base URL (Optional)</Label>
                         <Input
-                            id="baseUrl"
+                            id="interaction_baseUrl"
                             placeholder={interactionLlm.provider === 'openai' ? "e.g., https://your-openai-proxy/v1" : "e.g., https://your-anthropic-proxy"}
                             value={interactionLlm.baseUrl || ''}
                             onChange={(e) => updateSetting('baseUrl', e.target.value || undefined)}
@@ -313,9 +335,9 @@ export function ConfigSidebar() {
                   {interactionLlm.provider === 'azure' && (
                     <>
                         <div className="space-y-2">
-                            <Label htmlFor="azureEndpoint">Azure Endpoint <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="interaction_azureEndpoint">Azure Endpoint <span className="text-red-500">*</span></Label>
                             <Input
-                                id="azureEndpoint"
+                                id="interaction_azureEndpoint"
                                 placeholder="https://YOUR_RESOURCE.openai.azure.com/"
                                 value={azureEndpoint}
                                 onChange={(e) => setAzureEndpoint(e.target.value)}
@@ -323,9 +345,9 @@ export function ConfigSidebar() {
                             />
                         </div>
                          <div className="space-y-2">
-                            <Label htmlFor="azureDeployment">Azure Deployment Name <span className="text-red-500">*</span></Label>
+                            <Label htmlFor="interaction_azureDeployment">Azure Deployment Name <span className="text-red-500">*</span></Label>
                             <Input
-                                id="azureDeployment"
+                                id="interaction_azureDeployment"
                                 placeholder="Enter your deployment name"
                                 value={azureDeploymentName}
                                 onChange={(e) => setAzureDeploymentName(e.target.value)}
@@ -334,9 +356,9 @@ export function ConfigSidebar() {
                             <p className="text-xs text-muted-foreground">The specific name you gave your model deployment in Azure OpenAI Studio.</p>
                          </div>
                          <div className="space-y-2">
-                            <Label htmlFor="azureApiVersion">API Version (Optional)</Label>
+                            <Label htmlFor="interaction_azureApiVersion">API Version (Optional)</Label>
                             <Input
-                                id="azureApiVersion"
+                                id="interaction_azureApiVersion"
                                 placeholder={`e.g., ${DEFAULT_AZURE_API_VERSION}`}
                                 value={interactionLlm.azureApiVersion || ''}
                                 onChange={(e) => updateSetting('azureApiVersion', e.target.value || undefined)}
@@ -350,9 +372,9 @@ export function ConfigSidebar() {
                    {/* Bedrock Input */}
                   {interactionLlm.provider === 'anthropic-bedrock' && (
                      <div className="space-y-2">
-                        <Label htmlFor="awsRegion">AWS Region <span className="text-red-500">*</span></Label>
+                        <Label htmlFor="interaction_awsRegion">AWS Region <span className="text-red-500">*</span></Label>
                         <Input
-                            id="awsRegion"
+                            id="interaction_awsRegion"
                             placeholder="e.g., us-east-1"
                             value={awsRegion}
                             onChange={(e) => setAwsRegion(e.target.value)}
@@ -365,7 +387,7 @@ export function ConfigSidebar() {
                   {/* Model Select (Hide for Azure) */}
                   {interactionLlm.provider !== 'azure' && (
                       <div className="space-y-2">
-                        <Label htmlFor="model">Model</Label>
+                        <Label htmlFor="interaction_model">Model</Label>
                         <Select
                           value={interactionLlm.model}
                           onValueChange={(value) => {
@@ -379,7 +401,7 @@ export function ConfigSidebar() {
                           }}
                           disabled={availableModels.length === 0 || isSaving}
                         >
-                          <SelectTrigger id="model">
+                          <SelectTrigger id="interaction_model">
                             <SelectValue placeholder="Select Model" />
                           </SelectTrigger>
                           <SelectContent>
@@ -396,10 +418,10 @@ export function ConfigSidebar() {
                   {modelDetails?.supportsTemperature && (
                     <div className="space-y-2">
                         <div className="flex justify-between">
-                            <Label htmlFor="temperature">Temperature: {interactionLlm.temperature?.toFixed(1)}</Label>
+                            <Label htmlFor="interaction_temperature">Temperature: {interactionLlm.temperature?.toFixed(1)}</Label>
                         </div>
                         <Slider
-                            id="temperature"
+                            id="interaction_temperature"
                             min={0}
                             max={1}
                             step={0.1}
@@ -415,10 +437,10 @@ export function ConfigSidebar() {
 
                  <div className="space-y-2">
                       <div className="flex justify-between">
-                          <Label htmlFor="maxTokens">Max Tokens: {interactionLlm.maxTokens}</Label>
+                          <Label htmlFor="interaction_maxTokens">Max Tokens: {interactionLlm.maxTokens}</Label>
                       </div>
                       <Slider
-                          id="maxTokens"
+                          id="interaction_maxTokens"
                           min={256} // Consider making this dynamic based on model if needed
                           max={modelDetails?.maxOutputTokens || 4096} // Use model max
                           step={256}
@@ -461,6 +483,7 @@ export function ConfigSidebar() {
   return (
     <>
       <Button
+        ref={triggerRef}
         variant="ghost"
         size="icon"
         className="h-10 w-10"
@@ -470,8 +493,14 @@ export function ConfigSidebar() {
         <span className="sr-only">Toggle config sidebar</span>
       </Button>
 
-      <Sheet open={isConfigSidebarOpen} onOpenChange={toggleConfigSidebar}>
+      <Sheet open={isConfigSidebarOpen} onOpenChange={handleOpenChange}>
         <SheetContent side="right" className="w-80 p-0">
+          <VisuallyHidden.Root>
+            <SheetTitle>Configuration Settings</SheetTitle>
+            <SheetDescription>
+              Configure Interaction LLM provider, model, and parameters.
+            </SheetDescription>
+          </VisuallyHidden.Root>
           {sidebarContent}
         </SheetContent>
       </Sheet>

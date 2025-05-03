@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Prompt Improver',
+  title: 'Skaldur',
   description: 'Enhance your prompts for large language models',
 };
 

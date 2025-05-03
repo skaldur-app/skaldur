@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { useSessionStore } from "@/store/sessionStore";
 import { LlmSettings } from "@/types";
 import { llmProviderDetails, getProviderById, LlmModelDetails, LlmProviderId, isLlmProviderId } from "@/lib/model_details";
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
 import { Label } from "@/components/ui/label";
 import { ErrorModal } from "@/components/ui/ErrorModal";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,8 @@ export function LlmToolbar() {
   const {
     sessions,
     activeSessionUUID,
-    updateDestinationLlm
+    updateDestinationLlm,
+    markDestinationProviderValidated
   } = useSessionStore();
 
   const [destinationLlm, setDestinationLlm] = useState<LlmSettings | null>(null);
@@ -41,6 +42,7 @@ export function LlmToolbar() {
 
   const activeSession = activeSessionUUID ? sessions[activeSessionUUID] : null;
   const isConfigured = activeSession?.messages.length ? activeSession.messages.length > 0 : false;
+  const validatedProviders = activeSession?.validatedDestinationProviders || [];
 
   // Filtered provider list for the toolbar
   const toolbarProviderDetails = llmProviderDetails.filter(p => ALLOWED_TOOLBAR_PROVIDERS.includes(p.id));
@@ -170,6 +172,7 @@ export function LlmToolbar() {
 
       // --- Validation Successful: Save configuration ---
       updateDestinationLlm(activeSessionUUID, destinationLlm);
+      markDestinationProviderValidated(activeSessionUUID, providerId);
       setIsEditing(false);
 
     } catch (error: any) {
@@ -201,10 +204,18 @@ export function LlmToolbar() {
     <div className="flex items-center gap-4 w-full">
       <div className="w-48">
         <Label className="text-xs text-muted-foreground">Provider</Label>
-        <div className="font-medium truncate">
+        <div className="flex items-center gap-1">
+          <div className="font-medium truncate">
             {isLlmProviderId(destinationLlm.provider)
-                ? getProviderById(destinationLlm.provider)?.name || destinationLlm.provider
-                : destinationLlm.provider}
+              ? getProviderById(destinationLlm.provider)?.name || destinationLlm.provider
+              : destinationLlm.provider}
+          </div>
+          {(() => {
+            console.log('[Toolbar] validatedProviders:', validatedProviders, 'checking:', destinationLlm.provider);
+            return validatedProviders.includes(destinationLlm.provider as LlmProviderId);
+          })() && (
+            <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+          )}
         </div>
       </div>
       <div className="w-48">
@@ -227,7 +238,7 @@ export function LlmToolbar() {
   );
 
   const editableDisplay = (
-    <div className="flex items-center gap-4 w-full">
+    <div className="flex items-center gap-4 w-full pb-2 px-2">
       <div className="w-48">
         <Label htmlFor="dest_provider" className="text-xs">Provider</Label>
         <Select
